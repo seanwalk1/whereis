@@ -1,0 +1,8 @@
+H:\Images\projects\toolbox\whereis\whereis\bin\Debug\whereis.exe.config
+H:\Images\projects\toolbox\whereis\whereis\bin\Debug\whereis.exe
+H:\Images\projects\toolbox\whereis\whereis\bin\Debug\whereis.pdb
+H:\Images\projects\toolbox\whereis\whereis\obj\Debug\whereis.csproj.AssemblyReference.cache
+H:\Images\projects\toolbox\whereis\whereis\obj\Debug\whereis.csproj.SuggestedBindingRedirects.cache
+H:\Images\projects\toolbox\whereis\whereis\obj\Debug\whereis.csproj.CoreCompileInputs.cache
+H:\Images\projects\toolbox\whereis\whereis\obj\Debug\whereis.exe
+H:\Images\projects\toolbox\whereis\whereis\obj\Debug\whereis.pdb
