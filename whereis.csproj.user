@@ -4,7 +4,7 @@
     <StartArguments>hal</StartArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
-    <StartArguments>audio%2a -b -v</StartArguments>
+    <StartArguments>audio%2a</StartArguments>
     <StartWorkingDirectory>c:\temp</StartWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">

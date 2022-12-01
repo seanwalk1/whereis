@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 using Microsoft.VisualBasic.FileIO;
+using System.Reflection;
 
 
 namespace whereis
@@ -14,15 +15,24 @@ namespace whereis
     class Program
     {
         static bool wildcard = false;
-        static string sdxroot = null;
+        //static string sdxroot = null;
+        static string SdxRootPath = null;
         static int totalFiles = 0;
         static int depotFiles = 0;
+        static string csvname = @"whereis_idx.csv";
+        static string sdxsavename = @"sxdroot_saved.txt";
+        static string filepath = @"c:\temp\";
+        static string csvfull = filepath + csvname;
+        static string sdxsavefull = filepath + sdxsavename;
+        static string searchterm = null;
+        static bool sdxrootvalid = false;
+        static bool sdxsavedvalid = false;
+        static bool rebuildidx = false;
         static List<string> outputLines = new List<string>();
 
+
         // Following variables for new switches
-        static bool runNew = false;
         static bool verboseMode = false;
-        static bool reducedDepots = false;
         static string[] defaultDepotsArray = { "avcore", "base", "clientcore", "developer", "drivers", "ds", "enduser", "inetcore", "MergedComponents", "mincore", "minio", "minkernel", "nanoserver", "net", "onecore", "onecoreuap", "sdktools", "servercommon", "termsrv", "vm" };
         //static string[] defaultBadDepotsArray = { "_RequiredOriginal", "git", "intl", ".", "loc", "admin", "amcore", "analog", "build", "bvtbin", "com", "data", "gamecore", "inbox", "inetsrv", "iot", "mrcommon", "multimedia" };
         static string[] defaultBadDepotsArray = { "_RequiredOriginal", "branchconfig", "config", "githooks", "git", "intl", ".", "loc", "admin", "amcore", "analog", "build", "bvtbin", "com", "data", "gamecore", "inbox", "inetsrv", "iot", "mrcommon", "multimedia", "osclient", "pcshell", "printscan", "Public", "redist", "sdpublic", "server", "services", "shell", "shellcommon", "shellcommondesktopbase", "team", "ua", "windows", "xbox" };
@@ -48,17 +58,6 @@ namespace whereis
         static List<string> excludeDepots = new List<string>();
         static List<string> includeBinaryTypes = new List<string>();
         static List<string> excludeBinaryTypes = new List<string>();
-        // Setting default csv file (search and save) name and path to regular location when not overridden
-        static string saveNameDefault = @"whereis_idx.csv";
-        static string saveName = saveNameDefault;
-
-        static string savePathDefault = @"c:\temp";
-        static string savePath = savePathDefault;
-        //static string idxFullPathDefault=  @"c:\temp\whereis_idx.csv";
-
-        static string idxFullPathDefault = @"c:\temp\whereis_idx.csv";
-        static string savePathFull = idxFullPathDefault;
-        // New switches end
 
         public static void Help()
         {
@@ -71,7 +70,7 @@ namespace whereis
             Console.WriteLine(" /ad\tAdd Depot (Add comma-seperated list of depots to default list)");
             Console.WriteLine(" /id\tInclude Depot (Include ONLY comma-seperated list of depots)");
             Console.WriteLine(" /ed\tExclude Depot (Exclude comma-seperated list of depots from full list)");
-            Console.WriteLine(" /ld\tList Depots (Display default depot list. ignores all other switches, outputs depot list and exits)");
+            Console.WriteLine(" /ld\tList Depots (Display current filtered good and bad depots lists. ignores all other switches, outputs depot lists and exits)");
             Console.WriteLine(" /b\tBare output (Only display one line for each found binary in search mode)");
             Console.WriteLine(" /v\tVerbose output (Display verbose output while building index)");
             Console.WriteLine();
@@ -82,13 +81,91 @@ namespace whereis
             Console.WriteLine(" /l\tIDX Full Path Default (Not currently implemented)");
             Console.WriteLine();
         }
+
+        public static void GetSystemVariables()
+        {
+
+            SdxRootPath = Environment.GetEnvironmentVariable("sdxroot");
+
+            bool tmpsdxrootvalid = sdxrootvalid;
+            bool tmpsdxsavedvalid = sdxsavedvalid;
+            string tmpsdxsavepath = null;
+
+            if (File.Exists(csvfull))
+            {
+                rebuildidx = false;
+            }
+            else
+            {
+                rebuildidx = true;
+            }
+            if (File.Exists(sdxsavefull))
+            {
+                tmpsdxsavepath = File.ReadAllText(sdxsavefull);
+                if (Directory.Exists(tmpsdxsavepath))
+                {
+                    tmpsdxsavedvalid = true;
+                    SdxRootPath = tmpsdxsavepath;
+                    tmpsdxrootvalid = true;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid path in {0}. Deleting.", sdxsavefull);
+                    File.Delete(sdxsavefull);
+                }
+            }
+            if (SdxRootPath != null)
+            {
+                if (Directory.Exists(SdxRootPath))
+                {
+                    tmpsdxrootvalid = true;
+                    if (tmpsdxsavedvalid == false)
+                    {
+                        File.WriteAllText(sdxsavefull, SdxRootPath);
+                        tmpsdxsavedvalid = true;
+                    }
+                }
+                else
+                {
+                    SdxRootPath = null;
+                    tmpsdxrootvalid = false;
+                }
+            }
+
+            if (tmpsdxrootvalid == false)
+            {
+                Console.WriteLine("sdxroot not defined and/or {0} invalid. Please enter sdxroot path to filter available depots: ", sdxsavefull);
+                string testsdxroot = null;
+                while (SdxRootPath == null)
+                {
+                    testsdxroot = Console.ReadLine();
+                    if (Directory.Exists(testsdxroot))
+                    {
+                        SdxRootPath = testsdxroot;
+                        tmpsdxrootvalid = true;
+                        tmpsdxsavedvalid = true;
+                        File.WriteAllText(sdxsavefull, SdxRootPath);
+                    }
+                    else
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("Invalid directory, please re-enter");
+                        Console.WriteLine();
+                    }
+                }
+            }
+            sdxrootvalid = tmpsdxrootvalid;
+            sdxsavedvalid = tmpsdxsavedvalid;
+        }
+
         public static void FilterDirectories()
         {
             string[] reducedDepotsTemp = { "avcore", "base", "drivers", "ds", "enduser", "inetcore", "mincore", "minio", "minkernel", "nanoserver", "net", "onecore", "onecoreuap", "sdktools", "servercommon", "termsrv", "vm" };
             reducedDepotsList.AddRange(reducedDepotsTemp);
             List<string> availableDepots = new List<string>();
             List<string> removedDepots = new List<string>();
-            availableDepots.AddRange(Directory.GetDirectories(sdxroot));
+
+            availableDepots.AddRange(Directory.GetDirectories(SdxRootPath));
             availableDepots.ConvertAll(d => d.ToLower());
 
             //Setting up bad depot list.
@@ -125,6 +202,26 @@ namespace whereis
             }
             currentDepotsList = availableDepots;
 
+            if (ld == true)
+            {
+                Console.WriteLine();
+                Console.WriteLine("ld switch entered, so displaying filtered depot lists and exiting. Remove ld switch to use full features of whereis.");
+                Console.WriteLine();
+                Console.WriteLine("Current filtered list of bad depots:");
+                foreach (var cbd in currentBadDepotsList)
+                {
+                    Console.WriteLine(cbd);
+                }
+                Console.WriteLine();
+                Console.WriteLine("Current filtered list of good depots:");
+                foreach (var cdl in currentDepotsList)
+                {
+                    Console.WriteLine(cdl);
+                }
+                Console.WriteLine();
+                Console.WriteLine("Exiting");
+                return;
+            }
 
             if (ad == true)
             {
@@ -168,200 +265,96 @@ namespace whereis
 
         static void Main(string[] args)
         {
-            string getEnv = Environment.GetEnvironmentVariable("sdxroot");
-            string answer = "no";
-            bool rebuild = false;
             bool _help = false;
-
+            int idx = 0;
+            int argnum = 0;
 
             if (args.Count() != 0)
             {
-                rebuild = args[0].ToLower().Contains("rebuild") ? true : false;
-
-                if (args[0].Contains("*"))
+                foreach (var ag in args)
                 {
-                    wildcard = true;
-                    args[0] = args[0].Trim('*');
+                    if (ag.Contains("*"))
+                    {
+                        wildcard = true;
+                        args[argnum] = ag.Trim('*');
+                        searchterm = args[argnum];
+                    }
+                    argnum++;
                 }
 
-                // Adding new command line switches start
-                if (runNew)
+                foreach (var a in args)
                 {
-                    int idx = 0;
-                    foreach (var a in args)
+                    switch (a.ToLower())
                     {
-                        switch (a.ToLower())
-                        {
-                            case @"-ad":
-                            case @"/ad":
-                                ed = true;
-                                excludeDepots.AddRange(args[idx + 1].Split(','));
-                                idx += 2;
-                                rebuild = true;
-                                break;
-                            case @"-id":
-                            case @"/id":
-                                id = true;
-                                includeDepots.AddRange(args[idx + 1].Split(','));
-                                idx += 2;
-                                rebuild = true;
-                                break;
-                            case @"-ed":
-                            case @"/ed":
-                                ed = true;
-                                excludeDepots.AddRange(args[idx + 1].Split(','));
-                                idx += 2;
-                                rebuild = true;
-                                break;
-                            case @"-it":
-                            case @"/it":
-                                it = true;
-                                includeBinaryTypes.AddRange(args[idx + 1].Split(','));
-                                idx += 2;
-                                rebuild = true;
-                                break;
-                            case @"-et":
-                            case @"/et":
-                                et = true;
-                                excludeBinaryTypes.AddRange(args[idx + 1].Split(','));
-                                idx += 2;
-                                rebuild = true;
-                                break;
-                            case @"-n":
-                            case @"/n":
-                                sn = true;
-                                saveName = args[idx + 1];
-                                idx += 2;
-                                rebuild = true;
-                                break;
-                            case @"-p":
-                            case @"/p":
-                                sp = true;
-                                savePath = args[idx + 1];
-                                idx += 2;
-                                rebuild = true;
-                                break;
-                            case @"-l":
-                            case @"/l":
-                                ifpf = true;
-                                idxFullPathDefault = args[idx + 1];
-                                idx += 2;
-                                rebuild = false;
-                                break;
-                            case @"-v":
-                            case @"/v":
-                                verboseMode = true;
-                                idx += 1;
-                                rebuild = false;
-                                break;
-                            case @"-ld":
-                            case @"/ld":
-                                ld = true;
-                                idx += 1;
-                                rebuild = false;
-                                break;
-                            case @"/?":
-                            case @"-?":
-                            case @"/help":
-                            case @"-help":
-                            case @"/usage":
-                            case @"-usage":
-                                _help = true;
-                                break;
-
-                        }
-                    }
-                    if (verboseMode)
-                    {
-                        if (ld)
-                        {
-                            Console.WriteLine("Default list of indexed depots:");
-                            for (int i = 0; i < defaultDepotsArray.Count(); i++)
-                            {
-                                Console.WriteLine(defaultDepotsArray[i]);
-                            }
-                            return;
-                        }
-                        Console.WriteLine("-id switch: {0}", id);
-                        foreach (var i in includeDepots)
-                        {
-                            Console.WriteLine("Include depot: {0}", i);
-                        }
-                        Console.WriteLine("\n-ed switch: {0}", ed);
-                        foreach (var i in excludeDepots)
-                        {
-                            Console.WriteLine("Exclude depot: {0}", i);
-                        }
-                        //Console.WriteLine("\n-n switch: {0}, -n name: {1}", sn, saveName);
-                        //Console.WriteLine("\n-p switch: {0}, -p path: {1}", sp, savePath);
-                        //if (sn == true && sp == true)
-                        //{
-                        //    savePathFull = savePath + "\\" + saveName + ".csv";
-                        //    Console.WriteLine("Full save path: {0}", savePathFull);
-                        //}
-                        //Console.WriteLine("\n-l switch: {0}, -l full path: {1}", ifpf, idxFullPathDefault == null ? "N\\A" : idxFullPathDefault);
+                        case @"-ad":
+                        case @"/ad":
+                            ed = true;
+                            excludeDepots.AddRange(args[idx + 1].Split(','));
+                            idx += 2;
+                            rebuildidx = true;
+                            break;
+                        case @"-id":
+                        case @"/id":
+                            id = true;
+                            includeDepots.AddRange(args[idx + 1].Split(','));
+                            idx += 2;
+                            rebuildidx = true;
+                            break;
+                        case @"-ed":
+                        case @"/ed":
+                            ed = true;
+                            excludeDepots.AddRange(args[idx + 1].Split(','));
+                            idx += 2;
+                            rebuildidx = true;
+                            break;
+                        case @"-it":
+                        case @"/it":
+                            it = true;
+                            includeBinaryTypes.AddRange(args[idx + 1].Split(','));
+                            idx += 2;
+                            rebuildidx = true;
+                            break;
+                        case @"-et":
+                        case @"/et":
+                            et = true;
+                            excludeBinaryTypes.AddRange(args[idx + 1].Split(','));
+                            idx += 2;
+                            rebuildidx = true;
+                            break;
+                        case @"-v":
+                        case @"/v":
+                            verboseMode = true;
+                            idx += 1;
+                            rebuildidx = false;
+                            break;
+                        case @"-ld":
+                        case @"/ld":
+                            ld = true;
+                            idx += 1;
+                            rebuildidx = false;
+                            break;
+                        case @"/?":
+                        case @"-?":
+                        case @"/help":
+                        case @"-help":
+                        case @"/usage":
+                        case @"-usage":
+                            _help = true;
+                            break;
                     }
                 }
-                else
-                {
-                    int idx = 0;
-                    foreach (var a in args)
-                    {
-                        switch (a.ToLower())
-                        {
-                            case @"-b":
-                            case @"/b":
-                                sb = true;
-                                idx += 1;
-                                rebuild = false;
-                                break;
-                            case @"-v":
-                            case @"/v":
-                                verboseMode = true;
-                                idx += 1;
-                                rebuild = false;
-                                break;
-                            case @"-ld":
-                            case @"/ld":
-                                ld = true;
-                                idx += 1;
-                                rebuild = false;
-                                break;
-                            case @"/?":
-                            case @"-?":
-                            case @"/help":
-                            case @"-help":
-                            case @"/usage":
-                            case @"-usage":
-                                _help = true;
-                                break;
-                        }
-                    }
 
-                }
                 if (_help)
                 {
                     Help();
                     return;
-
                 }
-                if (ld)
-                {
-                    Console.WriteLine("Default list of indexed depots:");
-                    for (int i = 0; i < defaultDepotsArray.Count(); i++)
-                    {
-                        Console.WriteLine(defaultDepotsArray[i]);
-                    }
-                    return;
-                }
-                // New switches end
-
-                Console.WriteLine();
-                Console.WriteLine("Checking for existing index location at: {0}", idxFullPathDefault);
             }
             else
             {
-                Console.WriteLine("Index file exists, but no search term specified. Do you want to rebuild index? (yes/no): ");
+                rebuildidx = true;
+                string answer = "no";
+                Console.WriteLine("Index file exists, but no search term specified. Do you want to rebuild index? (y)es / (n)o: ");
                 Console.WriteLine("NOTE: Indexing process can take more than 60 minutes to complete.");
                 // Scripting workaround start
                 answer = "y";
@@ -374,118 +367,37 @@ namespace whereis
                     Console.WriteLine("No index file, or no search term specified. Exiting.");
                     return;
                 }
-                else if (answer.ToLower().StartsWith("y"))
-                {
-                    rebuild = true;
-                }
                 else
                 {
                     Console.WriteLine("Invalid response, exiting.");
                     return;
                 }
             }
-
-            if (File.Exists(idxFullPathDefault) == false || rebuild.Equals(true))
+            GetSystemVariables();
+            if (ld == true)
             {
-                if (rebuild)
+                FilterDirectories();
+                return;
+            }
+            if (rebuildidx == true)
+            {
+                FilterDirectories();
+                BuildIndex build = new BuildIndex(SdxRootPath);
+                if (searchterm != null)
                 {
-                    if (runNew)
-                    {
-                        Console.WriteLine("No file exists, rebuild specified, or rebuild intrinsic switch specified (-i, -e, -n, -p) so deleting and/or rebuilding index.");
-                    }
-                    else
-                    {
-                        Console.WriteLine("No file exists or forced rebuild specified, so deleting and/or rebuilding index.");
-                    }
-                    Console.WriteLine();
-                    if (File.Exists(idxFullPathDefault))
-                    {
-                        File.Delete(idxFullPathDefault);
-                    }
+                    SearchIndex index = new SearchIndex(searchterm);
                 }
-                else
-                {
-                    Console.WriteLine("Index file doesn't exist. Do you want to build index? (yes/no): ");
-                    Console.WriteLine("NOTE: Indexing process can take more than 60 minutes to complete.");
-                    answer = Console.ReadLine();
-
-                    if (answer.ToLower().StartsWith("n") && (args.Count() == 0))
-                    {
-                        Console.WriteLine();
-                        Console.WriteLine("No index file, or no search term specified. Exiting.");
-                        return;
-                    }
-                    else if (answer.ToLower().StartsWith("y"))
-                    {
-                        rebuild = true;
-                    }
-                    else
-                    {
-                        Console.WriteLine("Invalid response, exiting.");
-                        return;
-                    }
-                }
-                if (getEnv != null)
-                {
-                    Console.WriteLine("Getting sdxroot path for index root.");
-                    sdxroot = getEnv;
-                    Console.WriteLine("Got sdxroot path of: {0}", getEnv);
-                }
-                else
-                {
-                    Console.WriteLine("sdxroot not defined. Please enter sdxroot path: ");
-                    string getDir = Console.ReadLine();
-                    try
-                    {
-                        if (Directory.Exists(getDir))
-                        {
-                            sdxroot = getDir;
-                        }
-                        else
-                        {
-                            Console.WriteLine("Invalid directory specified for sdxroot. Exiting.");
-                            return;
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine("Exception {0}", e);
-                        return;
-                    }
-                }
+                return;
             }
             else
             {
-                Console.WriteLine("Found index file ({0}) ", idxFullPathDefault);
-                Console.WriteLine();
-
-                if (args.Count() == 0)
+                if (searchterm != null)
                 {
-                    Console.WriteLine();
-                    Console.WriteLine("No search term specified. To search index specify search string after whereis.exe (e.g. \"whereis.exe krn\"). Exiting");
-                    return;
+                    SearchIndex index = new SearchIndex(searchterm);
                 }
-
             }
 
-            if (rebuild)
-            {
-                FilterDirectories();
-                BuildIndex build = new BuildIndex(sdxroot);
-            }
-            if (File.Exists(idxFullPathDefault) && args.Count() != 0)
-            {
-                SearchIndex index = new SearchIndex(args[0].ToString());
-            }
-            if (args.Count() == 0)
-            {
-                Console.WriteLine();
-                Console.WriteLine("No search term specified. Exiting");
-            }
         }
-
-
-
 
         public class BuildIndex
         {
@@ -493,10 +405,7 @@ namespace whereis
             public BuildIndex(string dir)
             {
                 Console.WriteLine("Gathering directory structure.");
-                //bool skip = false;
                 string fileName = "sources*";
-
-
 
                 Console.WriteLine("Building index: ");
 
@@ -534,10 +443,8 @@ namespace whereis
                     {
                         Console.WriteLine("\t {0} files indexed in {1} depot", depotFiles, ad);
                     }
-
-
                 }
-                Console.WriteLine("Completed index. Indexed {0} files and wrote index to: {1}", totalFiles, savePathFull);
+                Console.WriteLine("Completed index. Indexed {0} files and wrote index to: {1}", totalFiles, csvfull);
             }
 
             private static void checkFiles(string name, string path)
@@ -551,6 +458,7 @@ namespace whereis
                 string[] validTypes = { targetNameText.ToLower(), targetTypeText.ToLower(), targetKernelText.ToLower() };
                 string[] selTypes = { "program", "dynlink", "hal", "driver", "miniport", "export_driver", "gdi_driver", "proglib", "library"}; //Not including bootpgm type because of its limited use
                 string fullPath = path + '\\' + name;
+
                 bool halType = false;
                 bool kernNameType = false;
                 List<string> tempLinesLower = new List<string>();
@@ -656,14 +564,12 @@ namespace whereis
 
                         if (path != null && Type != null && match == true && tmpTgtName != null)
                         {
-
                             tempLinesLower.Add(tmpTgtName + ',' + Type + ',' + path);
                             match = false;
                             tmpTgtName = null;
                             Type = null;
                             halType = false;
                             kernNameType = false;
-
                         }
                     }
                     if (tempLinesLower.Count() == 0)
@@ -693,7 +599,7 @@ namespace whereis
                     totalFiles += outputLines.Count();
                     depotFiles += outputLines.Count();
 
-                    File.AppendAllLines(savePathFull, outputLines.ToArray());
+                    File.AppendAllLines(csvfull, outputLines.ToArray());
 
                     if (outputLines.Count() > 1 && outputLines.Count() % 1000 == 0)
                     {
@@ -712,7 +618,7 @@ namespace whereis
             public SearchIndex(string term)
             {
 
-                using (TextFieldParser parser = new TextFieldParser(idxFullPathDefault))
+                using (TextFieldParser parser = new TextFieldParser(csvfull))
                 {
                     parser.TextFieldType = FieldType.Delimited;
                     parser.SetDelimiters(new string[] { "," });
